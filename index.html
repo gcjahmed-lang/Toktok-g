@@ -32,6 +32,8 @@ h2{text-align:center} .top{display:flex;justify-content:space-between;align-item
 .tab-active{outline:3px solid #111}
 .indrive-head{background:#111;color:#fff;border-radius:16px;padding:14px;text-align:center;margin-bottom:12px;font-size:22px}
 .indrive-head b{color:#FACC15}
+.profile-img{width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid #ddd}
+.map-label{background:#111;color:#fff;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:bold;white-space:nowrap;text-align:center;border:1px solid #fff}
 </style>
 </head>
 <body>
@@ -57,6 +59,8 @@ h2{text-align:center} .top{display:flex;justify-content:space-between;align-item
       <input id="regNameRider" placeholder="الاسم بالكامل">
       <input id="regPhoneRider" placeholder="رقم الموبايل 11 رقم">
       <input id="regPassRider" type="password" placeholder="كلمة سر (او سيبها رقمك)">
+      <p style="font-size:13px">📸 صورتك الشخصية:</p>
+      <input id="regPhotoRider" type="file" accept="image/*">
       <button class="btn-green" onclick="doRiderRegister()">تسجيل راكب ✅</button>
     </div>
     <div id="driverRegisterTab" class="hidden">
@@ -67,6 +71,8 @@ h2{text-align:center} .top{display:flex;justify-content:space-between;align-item
       <input id="regNational" placeholder="الرقم القومي 14 رقم">
       <select id="regGov"><option value="سوهاج">سوهاج</option></select>
       <select id="regArea"><option>سوهاج المدينة</option><option>أخميم</option><option>جرجا</option><option>طهطا</option><option>جهينة</option><option>المراغة</option><option>ساقلتة</option><option>دار السلام</option><option>البلينا</option><option>المنشاة</option><option>طما</option><option>الجلاوية</option></select>
+      <p style="font-size:13px">📸 صورتك الشخصية:</p>
+      <input id="regPhotoDriver" type="file" accept="image/*">
       <button class="btn-orange" onclick="doDriverRegister()">تسجيل سواق ✅</button>
     </div>
     <div id="adminLoginTab" class="hidden">
@@ -112,7 +118,7 @@ h2{text-align:center} .top{display:flex;justify-content:space-between;align-item
     <button class="btn-green" onclick="startLive('driver')">▶️ شغل GPS لايف + أنا متاح 🟢</button>
     <div class="flex"><button class="btn-green" onclick="setOnline(true)">أنا متاح 🟢</button><button class="btn-gray" onclick="setOnline(false)">مش متاح 🔴</button></div>
   </div>
-  <div class="card"><h3>📥 طلبات الركاب - قدم عرضك</h3><p style="font-size:13px;color:#666">الراكب حاطط سعره، انت اعرض سعرك</p><button class="btn-blue" onclick="loadDriverRequests()">🔄 تحديث الطلبات</button></div>
+  <div class="card"><h3>📥 طلبات الركاب - قدم عرضك</h3><p style="font-size:13px;color:#666">الراكب حاطط سعره، انت اعرض سعرك - الطلبات بتظهر لوحدها لايف 🔴</p><button class="btn-blue" onclick="loadDriverRequests()">🔄 تحديث الطلبات</button></div>
   <div id="driverRequests"></div>
   <div class="card"><h3>📤 عروضي اللي بعتها</h3><div id="myDriverOffers"></div></div>
 </div>
@@ -151,12 +157,25 @@ let myLat=null, myLng=null, mySpeed=0, myAccuracy=0, watchId=null;
 let acceptedDriverMarker=null, routeLine=null;
 let riderMarkerOnDriverMap=null, driverRouteLine=null;
 let currentAdminFilter='pending';
+let driverRequestsListener=null;
 const ADMIN_PHONE = "01100536612";
 const ADMIN_PASS = "1234";
 const ADMIN_NAME = "أدمن سوهاج";
 function saveLogin(user){ localStorage.setItem('toktok_user', JSON.stringify({phone:user.phone, password:user.password, type:user.type})); }
 function getSavedLogin(){ try{ return JSON.parse(localStorage.getItem('toktok_user')); }catch(e){ return null; } }
 function clearLogin(){ localStorage.removeItem('toktok_user'); }
+
+// --- تعديل 2: قراءة الصورة ---
+function readPhotoFile(inputId){
+  return new Promise((resolve)=>{
+    let f = document.getElementById(inputId).files[0];
+    if(!f) return resolve('');
+    let r = new FileReader();
+    r.onload = ()=> resolve(r.result);
+    r.readAsDataURL(f);
+  });
+}
+
 async function autoLogin(){
   let saved = getSavedLogin(); if(!saved) return false;
   if(saved.type==='admin'){
@@ -205,6 +224,11 @@ function calcDist(lat1,lon1,lat2,lon2){
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 function tukIcon(){ return L.divIcon({className:'', html:'<div style="font-size:32px;text-align:center">🛺</div>', iconSize:[36,36], iconAnchor:[18,18]}); }
+// --- تعديل 3: ايقونة بالاسم ---
+function tukIconWithName(name){
+  let safe = (name||'كابتن').replace(/</g,'');
+  return L.divIcon({className:'', html:'<div style="text-align:center"><div style="font-size:32px;line-height:1">🛺</div><div class="map-label">🛺 '+safe+'</div></div>', iconSize:[90,55], iconAnchor:[45,28]});
+}
 function meIcon(){ return L.divIcon({className:'', html:'<div style="font-size:32px;text-align:center">📍</div>', iconSize:[36,36], iconAnchor:[18,18]}); }
 function riderIcon(){ return L.divIcon({className:'', html:'<div style="font-size:32px;text-align:center">🧍</div>', iconSize:[36,36], iconAnchor:[18,18]}); }
 function navigateToRider(riderLat, riderLng){
@@ -271,13 +295,21 @@ function startLive(who){
   if(who==='driver' && currentUser){ db.collection('users').doc(currentUser.phone).update({online:true}); listenMyActiveRide(); }
 }
 function listenLiveDrivers(){
+  // تعديل 3: المتصلين بس online==true
   db.collection('users').where('type','==','driver').where('online','==',true).onSnapshot(snap=>{
     let html='';
+    // امسح العلامات القديمة اللي مش متصلة
+    let stillOnline = new Set();
+    snap.forEach(d=>{ stillOnline.add(d.id); });
+    Object.keys(driverMarkers).forEach(id=>{
+      if(!stillOnline.has(id) && mapRider){ mapRider.removeLayer(driverMarkers[id]); delete driverMarkers[id]; }
+    });
     snap.forEach(d=>{
       let u=d.data(); if(!u.lat) return;
       let dist = myLat? calcDist(myLat,myLng,u.lat,u.lng) : 0;
-      html += `<div class="card">🛺 <b>${u.name}</b> - ${u.area} - <span class="live">● متاح</span><br><small>${u.phone}<br>يبعد عنك: ${dist<1? Math.round(dist*1000)+' متر' : dist.toFixed(1)+' كم'}</small></div>`;
-      if(mapRider){ if(driverMarkers[d.id]) mapRider.removeLayer(driverMarkers[d.id]); driverMarkers[d.id] = L.marker([u.lat,u.lng], {icon: tukIcon()}).addTo(mapRider).bindPopup('🛺 كابتن '+u.name); }
+      let img = u.photo ? `<img src="${u.photo}" class="profile-img" style="width:45px;height:45px">` : '🛺';
+      html += `<div class="card" style="display:flex;gap:10px;align-items:center">${img}<div>🛺 <b>${u.name}</b> - ${u.area} - <span class="live">● متاح</span><br><small>${u.phone}<br>يبعد عنك: ${dist<1? Math.round(dist*1000)+' متر' : dist.toFixed(1)+' كم'}</small></div></div>`;
+      if(mapRider){ if(driverMarkers[d.id]) mapRider.removeLayer(driverMarkers[d.id]); driverMarkers[d.id] = L.marker([u.lat,u.lng], {icon: tukIconWithName(u.name)}).addTo(mapRider).bindPopup('🛺 كابتن '+u.name+'<br>'+u.phone); }
     });
     document.getElementById('liveDrivers').innerHTML = html || '<p>مفيش سواقين متاحين دلوقتي</p>';
   });
@@ -290,12 +322,12 @@ function listenMyAcceptedRide(){
       db.collection('users').doc(r.driverPhone).onSnapshot(d=>{
         let u = d.data(); if(!u || !u.lat || !mapRider) return;
         if(acceptedDriverMarker) mapRider.removeLayer(acceptedDriverMarker);
-        acceptedDriverMarker = L.marker([u.lat,u.lng], {icon: tukIcon()}).addTo(mapRider).bindPopup('🛺 سواقك '+u.name+' جايلك').openPopup();
+        acceptedDriverMarker = L.marker([u.lat,u.lng], {icon: tukIconWithName(u.name)}).addTo(mapRider).bindPopup('🛺 سواقك '+u.name+' جايلك').openPopup();
         let dist = myLat? calcDist(myLat,myLng,u.lat,u.lng) : 0;
         let mins = Math.max(1, Math.round(dist / 0.4));
         let distText = dist<1? Math.round(dist*1000)+' متر' : dist.toFixed(1)+' كم';
         document.getElementById('driverComingBox').classList.remove('hidden');
-        document.getElementById('driverComingBox').innerHTML = `<div class="driver-coming">🛺 <b>سواقك جايلك دلوقتي!</b><br>كابتن <b>${u.name}</b> - ${u.phone}<br><b style="font-size:22px;color:#16A34A">السعر المتفق عليه: ${r.finalPrice} ج</b><br><b style="font-size:20px;color:#DC2626">يبعد عنك: ${distText} - هيوصلك بعد: ${mins} دقيقة ⏰</b><br><a href="tel:${u.phone}">📞 اتصل بالسواق</a></div>`;
+        document.getElementById('driverComingBox').innerHTML = `<div class="driver-coming">${u.photo?`<img src="${u.photo}" class="profile-img"><br>`:''}🛺 <b>سواقك جايلك دلوقتي!</b><br>كابتن <b>${u.name}</b> - ${u.phone}<br><b style="font-size:22px;color:#16A34A">السعر المتفق عليه: ${r.finalPrice} ج</b><br><b style="font-size:20px;color:#DC2626">يبعد عنك: ${distText} - هيوصلك بعد: ${mins} دقيقة ⏰</b><br><a href="tel:${u.phone}">📞 اتصل بالسواق</a></div>`;
         updateRouteLine(u.lat, u.lng);
         if(myLat){ mapRider.fitBounds(L.latLngBounds([[myLat,myLng],[u.lat,u.lng]]), {padding:[50,50]}); }
       });
@@ -352,10 +384,11 @@ async function doRiderRegister(){
   if(!name) return alert('اكتب اسمك');
   if(phone.length!==11) return alert('رقم الموبايل لازم 11 رقم');
   if(!pass) pass = phone;
+  let photo = await readPhotoFile('regPhotoRider');
   try{
     let old = await db.collection('users').doc(phone).get();
     if(old.exists) return alert('الرقم ده متسجل قبل كده');
-    await db.collection('users').doc(phone).set({ name, phone, password: pass, nationalId: '', type:'rider', gov:'سوهاج', area:'سوهاج المدينة', status:'approved', online:false, lat:null, lng:null, speed:0, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    await db.collection('users').doc(phone).set({ name, phone, password: pass, nationalId: '', type:'rider', gov:'سوهاج', area:'سوهاج المدينة', status:'approved', online:false, lat:null, lng:null, speed:0, photo: photo, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
     saveLogin({phone, password:pass, type:'rider'});
     alert('تم تسجيل الراكب يا '+name+' ✅'); location.reload();
   }catch(e){ alert('مشكلة: '+e.message); }
@@ -369,10 +402,11 @@ async function doDriverRegister(){
   let area=document.getElementById('regArea').value;
   if(!name||!phone||!pass) return alert('كمل اسم السواق ورقمه وكلمة السر');
   if(phone.length!==11) return alert('رقم الموبايل لازم 11 رقم');
+  let photo = await readPhotoFile('regPhotoDriver');
   try{
     let old = await db.collection('users').doc(phone).get();
     if(old.exists) return alert('الرقم ده متسجل قبل كده');
-    await db.collection('users').doc(phone).set({ name, phone, password:pass, nationalId:national, type:'driver', gov, area, status:'pending', online:false, lat:null, lng:null, speed:0, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    await db.collection('users').doc(phone).set({ name, phone, password:pass, nationalId:national, type:'driver', gov, area, status:'pending', online:false, lat:null, lng:null, speed:0, photo: photo, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
     saveLogin({phone, password:pass, type:'driver'});
     alert('تم تسجيل السواق ✅ مستني الأدمن يقبلك'); location.reload();
   }catch(e){ alert('مشكلة: '+e.message); }
@@ -403,7 +437,7 @@ async function requestRide(){
   if(!from||!to) return alert('اكتب من فين ورايح فين');
   if(!price) return alert('اكتب السعر اللي عايز تدفعه');
   if(!myLat){ let ok = confirm('الـ GPS لسه مش شغال، تشغله الأول عشان السواق يمشي على مكانك؟'); if(ok){ getMyLocation('rider'); return; } }
-  await db.collection('requests').add({ riderPhone:currentUser.phone, riderName:currentUser.name, from, to, riderPrice: Number(price), finalPrice: null, area:currentUser.area, gov:'سوهاج', riderLat: myLat, riderLng: myLng, status:'waiting', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+  await db.collection('requests').add({ riderPhone:currentUser.phone, riderName:currentUser.name, riderPhoto: currentUser.photo||'', from, to, riderPrice: Number(price), finalPrice: null, area:currentUser.area, gov:'سوهاج', riderLat: myLat, riderLng: myLng, status:'waiting', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
   alert('تم ارسال طلبك بسعر '+price+' ج 🛺💰\nالسواقين هيعرضوا عليك دلوقتي'); loadMyRequests(); listenMyOffers();
 }
 async function loadMyRequests(){
@@ -417,7 +451,7 @@ function listenMyOffers(){
     let html='';
     snap.forEach(doc=>{
       let o=doc.data();
-      html+=`<div class="offer-box"><b>🛺 كابتن ${o.driverName}</b> - ${o.driverPhone}<br>${o.driverArea||''}<br>عرض عليك: <span class="price-big">${o.price} ج</span> <small>(انت طلبت ${o.riderPrice} ج)</small><br><div class="flex"><button class="btn-green" onclick="acceptOffer('${doc.id}','${o.requestId}','${o.driverPhone}','${o.driverName}',${o.price})">اقبل العرض ده ✅ - ${o.price} ج</button><button class="btn-red" onclick="rejectOffer('${doc.id}')">رفض ❌</button></div><a href="tel:${o.driverPhone}"><button class="btn-blue">📞 اتصل بيه</button></a></div>`;
+      html+=`<div class="offer-box">${o.driverPhoto?`<img src="${o.driverPhoto}" class="profile-img"><br>`:''}<b>🛺 كابتن ${o.driverName}</b> - ${o.driverPhone}<br>${o.driverArea||''}<br>عرض عليك: <span class="price-big">${o.price} ج</span> <small>(انت طلبت ${o.riderPrice} ج)</small><br><div class="flex"><button class="btn-green" onclick="acceptOffer('${doc.id}','${o.requestId}','${o.driverPhone}','${o.driverName}',${o.price})">اقبل العرض ده ✅ - ${o.price} ج</button><button class="btn-red" onclick="rejectOffer('${doc.id}')">رفض ❌</button></div><a href="tel:${o.driverPhone}"><button class="btn-blue">📞 اتصل بيه</button></a></div>`;
     });
     document.getElementById('myOffers').innerHTML = html || '<p>لسه مفيش عروض، استنى السواقين يعرضوا عليك</p>';
   });
@@ -440,19 +474,22 @@ async function updateDriverStatus(){
   if(!d.exists){ clearLogin(); alert('حسابك اتحذف'); location.reload(); return; }
   document.getElementById('driverStatusCard').innerHTML=`حالتك: ${d.data().online?'متاح 🟢':'مش متاح 🔴'} | منطقتك: ${d.data().area} - سوهاج`;
 }
-async function loadDriverRequests(){
-  let snap=await db.collection('requests').where('status','==','waiting').orderBy('createdAt','desc').limit(15).get();
-  let html=''; snap.forEach(doc=>{ let r=doc.data(); let dist = (myLat && r.riderLat)? calcDist(myLat,myLng,r.riderLat,r.riderLng) : 0; let distText = dist? (dist<1? Math.round(dist*1000)+' متر' : dist.toFixed(1)+' كم') : 'من غير GPS';
-    html+=`<div class="card"><b>🧍 ${r.riderName}</b> - ${r.riderPhone}<br>من <b>${r.from}</b> إلى <b>${r.to}</b><br>الراكب عايز يدفع: <span class="price-big">${r.riderPrice} ج</span><br><small>${r.area} - 📍 يبعد عنك: ${distText}</small><br><input id="offer_${doc.id}" type="number" placeholder="اعرض سعرك - مثال: ${r.riderPrice}"><button class="btn-green" onclick="sendOffer('${doc.id}','${r.riderPhone}',${r.riderPrice})">قدم عرض بسعرك 💰</button><div class="flex"><button class="btn-blue" onclick="navigateToRider(${r.riderLat}, ${r.riderLng})">🧭 جوجل ماب</button><button class="btn-orange" onclick="showRiderOnMyMap(${r.riderLat}, ${r.riderLng}, '${r.riderName}')">🗺️ على خريطتي</button></div></div>`; });
-  document.getElementById('driverRequests').innerHTML=html||'<p style="text-align:center;color:#888">مفيش طلبات دلوقتي</p>';
-  loadMyDriverOffers();
+// --- تعديل 1: طلبات لايف للسواق ---
+function loadDriverRequests(){
+  if(driverRequestsListener) driverRequestsListener();
+  driverRequestsListener = db.collection('requests').where('status','==','waiting').orderBy('createdAt','desc').limit(15).onSnapshot(snap=>{
+    let html=''; snap.forEach(doc=>{ let r=doc.data(); let dist = (myLat && r.riderLat)? calcDist(myLat,myLng,r.riderLat,r.riderLng) : 0; let distText = dist? (dist<1? Math.round(dist*1000)+' متر' : dist.toFixed(1)+' كم') : 'من غير GPS';
+      html+=`<div class="card">${r.riderPhoto?`<img src="${r.riderPhoto}" class="profile-img"><br>`:''}<b>🧍 ${r.riderName}</b> - ${r.riderPhone}<br>من <b>${r.from}</b> إلى <b>${r.to}</b><br>الراكب عايز يدفع: <span class="price-big">${r.riderPrice} ج</span><br><small>${r.area} - 📍 يبعد عنك: ${distText}</small><br><input id="offer_${doc.id}" type="number" placeholder="اعرض سعرك - مثال: ${r.riderPrice}"><button class="btn-green" onclick="sendOffer('${doc.id}','${r.riderPhone}',${r.riderPrice})">قدم عرض بسعرك 💰</button><div class="flex"><button class="btn-blue" onclick="navigateToRider(${r.riderLat}, ${r.riderLng})">🧭 جوجل ماب</button><button class="btn-orange" onclick="showRiderOnMyMap(${r.riderLat}, ${r.riderLng}, '${r.riderName}')">🗺️ على خريطتي</button></div></div>`; });
+    document.getElementById('driverRequests').innerHTML=html||'<p style="text-align:center;color:#888">مفيش طلبات دلوقتي - مستني الركاب يطلبوا...</p>';
+    loadMyDriverOffers();
+  }, (e)=>{ console.log(e); });
 }
 async function sendOffer(requestId, riderPhone, riderPrice){
   let price = document.getElementById('offer_'+requestId).value.trim();
   if(!price) return alert('اكتب سعرك الأول');
   let old = await db.collection('offers').where('requestId','==',requestId).where('driverPhone','==',currentUser.phone).get();
   if(!old.empty){ old.forEach(d=> d.ref.update({price:Number(price), status:'pending'})); alert('حدثت عرضك لـ '+price+' ج ✅'); return; }
-  await db.collection('offers').add({ requestId, riderPhone, riderPrice, driverPhone: currentUser.phone, driverName: currentUser.name, driverArea: currentUser.area, price: Number(price), status:'pending', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+  await db.collection('offers').add({ requestId, riderPhone, riderPrice, driverPhone: currentUser.phone, driverName: currentUser.name, driverArea: currentUser.area, driverPhoto: currentUser.photo||'', price: Number(price), status:'pending', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
   alert('بعت عرضك بـ '+price+' ج 💰\nاستنى الراكب يقبلك'); loadMyDriverOffers();
 }
 async function loadMyDriverOffers(){
@@ -470,7 +507,7 @@ async function loadAdmin(filter='pending'){
     let reqSnap=await db.collection('requests').get(); document.getElementById('reqCount').innerText=reqSnap.size;
     let list = filter==='all'? [...drivers,...riders] : filter==='approved'? drivers.filter(d=>d.status==='approved') : drivers.filter(d=>d.status==='pending');
     let html=''; list.forEach(u=>{
-      html+=`<div class="card"><b>${u.name}</b> - ${u.phone} <span class="badge ${u.status}">${u.status==='pending'?'مستني ⏳':u.status==='approved'?'مقبول ✅':'مرفوض ❌'}</span><br><small>${u.type==='driver'?'سواق توكتوك 🛺':'راكب 🧍'} - ${u.area}</small><br>
+      html+=`<div class="card">${u.photo?`<img src="${u.photo}" class="profile-img"><br>`:''}<b>${u.name}</b> - ${u.phone} <span class="badge ${u.status}">${u.status==='pending'?'مستني ⏳':u.status==='approved'?'مقبول ✅':'مرفوض ❌'}</span><br><small>${u.type==='driver'?'سواق توكتوك 🛺':'راكب 🧍'} - ${u.area}</small><br>
       <div class="flex"><button class="btn-green" onclick="setStatus('${u.id}','approved')">قبول ✅</button><button class="btn-red" onclick="setStatus('${u.id}','rejected')">رفض ❌</button></div>
       <button class="btn-black" onclick="deleteUser('${u.id}','${u.name}')">🗑️ حذف نهائي</button>
       <button class="btn-gray" onclick="blockUser('${u.id}','${u.name}')">🚫 حظر</button></div>`;
