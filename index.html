@@ -191,7 +191,7 @@ async function autoLogin(){
   if(u.type==='driver'){
     if(u.status!=='approved'){ clearLogin(); return false; }
     document.getElementById('driverName').innerText=u.name;
-    showScreen('driverScreen'); loadDriverRequests(); updateDriverStatus(); listenMyActiveRide(); checkIfDeletedLive(); return true;
+    showScreen('driverScreen'); setDriverOnline(); loadDriverRequests(); updateDriverStatus(); listenMyActiveRide(); checkIfDeletedLive(); return true;
   } else {
     document.getElementById('riderName').innerText=u.name;
     showScreen('riderScreen'); loadMyRequests(); listenLiveDrivers(); listenMyAcceptedRide(); listenMyOffers(); checkIfDeletedLive(); return true;
@@ -358,7 +358,30 @@ function showScreen(id){
     if(mapDriver) mapDriver.invalidateSize();
   },300);
 }
-function logout(){ if(watchId) navigator.geolocation.clearWatch(watchId); clearLogin(); location.reload(); }
+// --- السواق يدخل = متاح، يخرج = مش متاح ---
+async function setDriverOnline(){
+  if(currentUser && currentUser.type==='driver'){
+    try{ await db.collection('users').doc(currentUser.phone).update({online:true}); }catch(e){}
+  }
+}
+async function setDriverOffline(){
+  if(currentUser && currentUser.type==='driver'){
+    try{ await db.collection('users').doc(currentUser.phone).update({online:false}); }catch(e){}
+  }
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(!currentUser || currentUser.type!=='driver') return;
+  if(document.hidden){ db.collection('users').doc(currentUser.phone).update({online:false}); }
+  else { db.collection('users').doc(currentUser.phone).update({online:true}); }
+});
+window.addEventListener('pagehide', ()=>{ if(currentUser && currentUser.type==='driver'){ db.collection('users').doc(currentUser.phone).update({online:false}); } });
+window.addEventListener('beforeunload', ()=>{ if(currentUser && currentUser.type==='driver'){ db.collection('users').doc(currentUser.phone).update({online:false}); } });
+
+function logout(){
+  if(currentUser && currentUser.type==='driver'){ db.collection('users').doc(currentUser.phone).update({online:false}); }
+  if(watchId) navigator.geolocation.clearWatch(watchId); clearLogin();
+  setTimeout(()=>location.reload(), 300);
+}
 async function doAdminLogin(){
   let phone=document.getElementById('adminLoginPhone').value.trim();
   let pass=document.getElementById('adminLoginPass').value.trim();
@@ -422,7 +445,7 @@ async function doLogin(){
   }
   if(u.password!==pass) return alert('كلمة السر غلط');
   currentUser={phone, ...u}; saveLogin({phone, password:pass, type:'driver'});
-  if(u.type==='driver'){ if(u.status!=='approved'){ alert('حسابك لسه مستني القبول ⏳'); return; } document.getElementById('driverName').innerText=u.name; showScreen('driverScreen'); loadDriverRequests(); updateDriverStatus(); listenMyActiveRide(); checkIfDeletedLive(); }
+  if(u.type==='driver'){ if(u.status!=='approved'){ alert('حسابك لسه مستني القبول ⏳'); return; } document.getElementById('driverName').innerText=u.name; showScreen('driverScreen'); setDriverOnline(); loadDriverRequests(); updateDriverStatus(); listenMyActiveRide(); checkIfDeletedLive(); }
 }
 async function requestRide(){
   let from=document.getElementById('fromLoc').value.trim();
@@ -468,7 +491,6 @@ async function updateDriverStatus(){
   if(!d.exists){ clearLogin(); alert('حسابك اتحذف'); location.reload(); return; }
   document.getElementById('driverStatusCard').innerHTML=`حالتك: ${d.data().online?'متاح 🟢':'مش متاح 🔴'} | منطقتك: ${d.data().area} - سوهاج`;
 }
-// --- الحل: طلبات لايف للسواق من غير orderBy ---
 function loadDriverRequests(){
   if(driverRequestsListener) driverRequestsListener();
   driverRequestsListener = db.collection('requests').where('status','==','waiting').onSnapshot(snap=>{
